@@ -191,5 +191,3 @@ export default function Dashboard() {
     </div>
   );
 }
-import { ok } from '@/ _alias_check';
-console.log(ok);
