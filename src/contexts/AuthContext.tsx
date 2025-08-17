@@ -1,62 +1,60 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+// src/contexts/AuthContext.tsx
+// @refresh reset
+import { createContext, useContext, useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
 
-interface AuthContextType {
+type AuthContextValue = {
   user: User | null;
-  session: Session | null;
   loading: boolean;
+  signInWithOtp: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    // estado inicial
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setLoading(false);
+    });
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    // listener de sessão
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => sub.subscription.unsubscribe();
   }, []);
 
+  const signInWithOtp = async (email: string) => {
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({ email });
+    setLoading(false);
+    return { error };
+  };
+
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Error signing out:', error);
-    }
+    setLoading(true);
+    await supabase.auth.signOut();
+    setLoading(false);
   };
 
-  const value = {
-    user,
-    session,
-    loading,
-    signOut,
-  };
+  return (
+    <AuthContext.Provider value={{ user, loading, signInWithOtp, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth deve ser usado dentro de <AuthProvider>");
+  return ctx;
+}
